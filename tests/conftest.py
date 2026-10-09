@@ -9,8 +9,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ipadmp4.plan import Asker
 from ipadmp4.tracks import AudioTrack, MediaInfo, SubtitleTrack, VideoStream
+
+
+@pytest.fixture(autouse=True)
+def _isolated_config(tmp_path_factory, monkeypatch):
+    """Never read the real ~/.config/ipadmp4 during tests."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("xdg")))
 
 
 def aud(language: str = "eng", codec: str = "ac3", channels: int = 6, index: int = 1, **kw) -> AudioTrack:

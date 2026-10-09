@@ -145,7 +145,15 @@ def probe(path: Path) -> MediaInfo:
     cmd = ["ffprobe", "-v", "error", "-show_streams", "-of", "json", str(path)]
     result = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
     if result.returncode != 0:
-        detail = result.stderr.strip() or f"exit code {result.returncode}"
-        raise Ipadmp4Error(f"ffprobe could not read {path}: {detail}")
+        raise Ipadmp4Error(f"ffprobe could not read the file: {_last_error(result.stderr, path, result.returncode)}")
     info = parse_ffprobe_json(result.stdout)
     return MediaInfo(video=info.video, audio=info.audio, subtitles=(*info.subtitles, *external_subtitles(path)))
+
+
+def _last_error(stderr: str, path: Path, returncode: int) -> str:
+    """ffprobe's final message, e.g. "Invalid data found when processing input",
+    without the file name it starts with (the caller shows that already)."""
+    lines = [line.strip() for line in stderr.splitlines() if line.strip()]
+    if not lines:
+        return f"exit code {returncode}"
+    return lines[-1].removeprefix(f"{path}: ")

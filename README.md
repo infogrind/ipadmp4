@@ -16,8 +16,27 @@ ipadmp4 -r ~/Movies/trip       # all videos in a folder tree
 ipadmp4 -n movie.mkv           # show the ffmpeg command, convert nothing
 ```
 
-`movie.mkv` becomes `movie.mp4` next to it (or under `-o DIR`). Existing MP4s
-are skipped unless `--force` is given.
+`movie.mkv` becomes `movie.mp4` next to it, or in the configured output
+folder (see below), or under `-o DIR`. Existing MP4s are skipped unless
+`--force` is given.
+
+At the end, a summary lists every file: what was converted and where the MP4
+was written (with size and time taken), and what was skipped or failed and
+why.
+
+## Settings
+
+Optional, in `~/.config/ipadmp4/config.toml` (or
+`$XDG_CONFIG_HOME/ipadmp4/config.toml`):
+
+```toml
+# Where MP4s go; default: next to the originals.
+output_dir = "~/Movies/iPad"
+```
+
+`~` and `$VARIABLES` are expanded; the folder is created when needed.
+`-o DIR` overrides the setting for one run, `--next-to-source` ignores it.
+Unknown settings are reported as errors, so typos don't go unnoticed.
 
 ## Questions come first
 

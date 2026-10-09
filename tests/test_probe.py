@@ -1,8 +1,10 @@
 import json
+import shutil
 
 import pytest
 
-from ipadmp4.probe import external_subtitles, parse_ffprobe_json
+from ipadmp4.errors import Ipadmp4Error
+from ipadmp4.probe import external_subtitles, parse_ffprobe_json, probe
 
 
 def _json(*streams):
@@ -103,3 +105,12 @@ def test_non_utf8_subtitles_are_read_as_cp1252(tmp_path):
     (tmp_path / "Movie.srt").write_bytes("café".encode("cp1252"))
     (found,) = external_subtitles(movie)
     assert found.charset == "CP1252"
+
+
+@pytest.mark.skipif(shutil.which("ffprobe") is None, reason="needs ffprobe")
+def test_probe_error_is_one_short_line(tmp_path):
+    bad = tmp_path / "bad.mkv"
+    bad.write_bytes(b"not a video at all" * 100)
+    with pytest.raises(Ipadmp4Error) as e:
+        probe(bad)
+    assert str(e.value) == "ffprobe could not read the file: Invalid data found when processing input"
