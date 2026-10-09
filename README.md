@@ -47,6 +47,43 @@ cover_art = true
 `--cover-art` / `--no-cover-art` override `cover_art`.
 Unknown settings are reported as errors, so typos don't go unnoticed.
 
+## Picking files with fzf
+
+`ipadmp4` itself only takes paths. To pick movies, episodes or whole season
+folders interactively from your library, put a small picker in front of it.
+This [fish](https://fishshell.com) function lists folders and video files
+under a root directory with [`fd`](https://github.com/sharkdp/fd), lets you
+select several with [`fzf`](https://github.com/junegunn/fzf) (TAB), and passes
+them to `ipadmp4 -r`:
+
+```sh
+ipadpick ~/Movies                          # pick under ~/Movies, convert
+ipadpick ~/Movies -o ~/Desktop/trip -i     # extra arguments go to ipadmp4
+```
+
+Videos under 200 MB are not listed, which keeps samples out. Save this as
+`~/.config/fish/functions/ipadpick.fish` (needs `brew install fd fzf`):
+
+```fish
+function ipadpick --description 'Pick videos/folders under ROOT with fzf and convert them with ipadmp4'
+    if test (count $argv) -lt 1; or not test -d "$argv[1]"
+        echo "usage: ipadpick ROOT [ipadmp4 options...]" >&2
+        echo "  e.g. ipadpick ~/Movies -o ~/Desktop/trip -i" >&2
+        return 2
+    end
+    set -l root (path resolve -- $argv[1])
+    # Paths relative to ROOT, so fzf matches movie/series names, not the prefix.
+    set -l picked (begin
+            fd --type d --base-directory $root .     # folders: a movie, a season, a series
+            fd --type f -e mkv -e avi -e mp4 -e mov --size +200m --base-directory $root .   # big videos only: no samples
+        end | fzf --multi --prompt "ipadmp4 $root> " \
+                --preview "ls -lh -- "(string escape -- $root)"/{}" \
+                --header 'TAB: select several, ENTER: convert')
+    test -n "$picked"; or return
+    ipadmp4 -r $argv[2..] $root/$picked
+end
+```
+
 ## Questions come first
 
 All files are inspected and every question is answered before the first
