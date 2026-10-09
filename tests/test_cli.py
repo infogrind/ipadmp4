@@ -1,11 +1,15 @@
 """The CLI flow without ffmpeg: probing and converting are faked."""
 
 import os
+import subprocess
+from pathlib import Path
 
 import pytest
 
 from ipadmp4 import cli
+from ipadmp4.command import Options
 from ipadmp4.errors import Ipadmp4Error
+from ipadmp4.plan import Plan
 
 from .conftest import ScriptedAsker, aud, media, sub
 
@@ -155,3 +159,74 @@ def test_same_name_in_two_folders_is_converted_once(tmp_path, fake_tools, capsys
     assert [p.name for p in out.iterdir()] == ["S01E01.mp4"]
     summary = capsys.readouterr().out.split("Summary:")[1]
     assert f"skipped       {tmp_path / 'B/S01E01.mkv'}: {out / 'S01E01.mp4'} is already produced from" in summary
+
+
+@pytest.mark.parametrize(
+    ("setting", "args", "expected"),
+    [
+        (None, [], True),
+        ("cover_art = false", [], False),
+        ("cover_art = false", ["--cover-art"], True),
+        (None, ["--no-cover-art"], False),
+    ],
+)
+def test_cover_art_setting_and_option(tmp_path, fake_tools, monkeypatch, setting, args, expected):
+    if setting:
+        _config(setting)
+    seen = []
+
+    def convert(task, opts):
+        seen.append(opts.cover_art)
+        task.dst.touch()
+        return True
+
+    monkeypatch.setattr(cli, "_convert", convert)
+    assert cli.main([*_movies(tmp_path, "a.mkv"), *args], asker=ScriptedAsker()) == 0
+    assert seen == [expected]
+
+
+def _fake_ffmpeg(monkeypatch):
+    """Record the ffmpeg command and 'succeed' by writing its output file."""
+    commands = []
+
+    def run(cmd, **kwargs):
+        commands.append(cmd)
+        Path(cmd[-1]).write_bytes(b"mp4")
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(cli.subprocess, "run", run)
+    return commands
+
+
+def _task(tmp_path):
+    info = media([aud("eng")])
+    plan = Plan(audio=info.audio[0], subtitle=None)
+    return cli.Task(src=tmp_path / "Heat.mkv", dst=tmp_path / "Heat.mp4", info=info, plan=plan)
+
+
+def test_convert_embeds_and_cleans_up_cover(tmp_path, monkeypatch):
+    commands = _fake_ffmpeg(monkeypatch)
+    rendered = []
+
+    def render(text, out):
+        rendered.append(text)
+        out.write_bytes(b"png")
+
+    monkeypatch.setattr(cli, "render_title_card", render)
+    assert cli._convert(_task(tmp_path), Options())
+    assert rendered == ["Heat"]
+    assert str(tmp_path / "Heat.mp4.cover.png") in commands[0]
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["Heat.mp4"]
+
+
+def test_convert_without_cover_when_drawing_fails(tmp_path, monkeypatch, capsys):
+    commands = _fake_ffmpeg(monkeypatch)
+
+    def render(text, out):
+        raise Ipadmp4Error("cannot draw cover art: osascript not found (macOS only)")
+
+    monkeypatch.setattr(cli, "render_title_card", render)
+    assert cli._convert(_task(tmp_path), Options())
+    assert "-c:v:1" not in commands[0]
+    assert "converting without cover art" in capsys.readouterr().err
+    assert (tmp_path / "Heat.mp4").exists()

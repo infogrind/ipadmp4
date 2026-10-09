@@ -37,6 +37,16 @@ def _make_movie(path, srt, *, audio_languages):
     subprocess.run([*cmd, str(path)], check=True)
 
 
+def _title(path):
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format_tags=title", "-of", "default=nw=1:nk=1", str(path)],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return out.strip()
+
+
 def _streams(path):
     out = subprocess.run(
         ["ffprobe", "-v", "error", "-show_streams", "-of", "json", str(path)],
@@ -67,15 +77,18 @@ def test_batch_asks_first_then_converts(tmp_path, monkeypatch):
     assert events == ["ask", "convert", "convert"]
 
     a = _streams(tmp_path / "a.mp4")
-    assert [s["codec_name"] for s in a] == ["h264", "ac3", "mov_text"]
+    assert [s["codec_name"] for s in a] == ["h264", "ac3", "mov_text", "png"]
+    assert a[3]["disposition"]["attached_pic"] == 1  # cover art
+    assert _title(tmp_path / "a.mp4") == "a"
     assert (a[1]["channels"], a[1]["tags"]["language"]) == (6, "eng")
     assert a[2]["tags"]["language"] == "eng"
     assert a[2]["disposition"]["default"] == 1
 
     b = _streams(tmp_path / "b.mp4")
-    assert [s["codec_name"] for s in b] == ["h264", "ac3", "mov_text"]  # DTS became AC-3
+    assert [s["codec_name"] for s in b] == ["h264", "ac3", "mov_text", "png"]  # DTS became AC-3
     assert (b[1]["channels"], b[1]["tags"]["language"]) == (6, "jpn")
     assert list(tmp_path.glob("*.part")) == []
+    assert list(tmp_path.glob("*.cover.png")) == []
 
 
 def test_external_srt_and_hevc_reencode(tmp_path):
@@ -87,7 +100,7 @@ def test_external_srt_and_hevc_reencode(tmp_path):
     (tmp_path / "Movie.de.srt").write_bytes("1\n00:00:00,000 --> 00:00:00,900\nCafé\n".encode("cp1252"))
 
     asker = ScriptedAsker("", "2")  # keep the audio, take the German file
-    assert cli.main(["-i", "--reencode", str(movie)], asker=asker) == 0
+    assert cli.main(["-i", "--reencode", "--no-cover-art", str(movie)], asker=asker) == 0
 
     out = tmp_path / "Movie.mp4"
     video, _, subtitle = _streams(out)

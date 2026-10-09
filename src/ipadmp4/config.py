@@ -22,6 +22,11 @@ CONFIG_NAME = "config.toml"
 class Config:
     # Where MP4s go when -o isn't given; None means next to the originals.
     output_dir: Path | None = None
+    # Embed the file name as cover art (the TV app's thumbnail).
+    cover_art: bool = True
+
+
+KNOWN_SETTINGS = ("output_dir", "cover_art")
 
 
 def config_path(env: Mapping[str, str] = os.environ) -> Path:
@@ -43,16 +48,23 @@ def load_config(path: Path) -> Config:
         raise Ipadmp4Error(f"cannot read {path}: {e.strerror}") from None
 
     # Reject unknown keys, so a typo doesn't silently do nothing.
-    unknown = sorted(set(data) - {"output_dir"})
+    unknown = sorted(set(data) - set(KNOWN_SETTINGS))
     if unknown:
-        raise Ipadmp4Error(f"{path}: unknown setting(s): {', '.join(unknown)} (known: output_dir)")
+        known = ", ".join(KNOWN_SETTINGS)
+        raise Ipadmp4Error(f"{path}: unknown setting(s): {', '.join(unknown)} (known: {known})")
 
-    output_dir = data.get("output_dir")
-    if output_dir is None:
-        return Config()
-    if not isinstance(output_dir, str) or not output_dir.strip():
+    cover_art = data.get("cover_art", True)
+    if not isinstance(cover_art, bool):
+        raise Ipadmp4Error(f"{path}: cover_art must be true or false")
+    return Config(output_dir=_output_dir(path, data.get("output_dir")), cover_art=cover_art)
+
+
+def _output_dir(path: Path, value: object) -> Path | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
         raise Ipadmp4Error(f"{path}: output_dir must be a non-empty string")
-    resolved = Path(os.path.expandvars(output_dir)).expanduser()
+    resolved = Path(os.path.expandvars(value)).expanduser()
     if not resolved.is_absolute():
-        raise Ipadmp4Error(f"{path}: output_dir must be an absolute path (or start with ~): {output_dir}")
-    return Config(output_dir=resolved)
+        raise Ipadmp4Error(f"{path}: output_dir must be an absolute path (or start with ~): {value}")
+    return resolved

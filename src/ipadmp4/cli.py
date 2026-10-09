@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
 
+from .artwork import render_title_card
 from .command import Options, build_command, describe
 from .config import config_path, load_config
 from .discover import collect, normalize_extension
@@ -43,6 +44,7 @@ video is encoded to HEVC with the hardware encoder.
 
 Settings: {config}
   output_dir = "~/Movies/iPad"   default for -o
+  cover_art = false              default for --no-cover-art
 """
 
 CONVERTED = "converted"
@@ -101,6 +103,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-n", "--dry-run", action="store_true", help="print the ffmpeg commands without running them")
     parser.add_argument("-f", "--force", action="store_true", help="overwrite existing MP4 files")
     parser.add_argument("--reencode", action="store_true", help="re-encode video even if it could be copied")
+    parser.add_argument(
+        "--cover-art",
+        action=argparse.BooleanOptionalAction,
+        help="embed the file name as cover art, for the TV app's thumbnail (default: cover_art setting, else on)",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="show full ffmpeg output")
     parser.add_argument("--version", action="version", version=f"%(prog)s {version('ipadmp4')}")
     return parser
@@ -112,9 +119,11 @@ def main(argv: list[str] | None = None, asker: Asker | None = None) -> int:
     args = _build_parser().parse_args(argv)
     extensions = frozenset(normalize_extension(e) for e in args.ext) if args.ext else None
     try:
+        config = load_config(config_path())
         output_dir = args.output_dir
         if output_dir is None and not args.next_to_source:
-            output_dir = load_config(config_path()).output_dir
+            output_dir = config.output_dir
+        cover_art = config.cover_art if args.cover_art is None else args.cover_art
         return _run(
             args.paths,
             recursive=args.recursive,
@@ -124,7 +133,7 @@ def main(argv: list[str] | None = None, asker: Asker | None = None) -> int:
             force=args.force,
             session=Session(interactive=args.interactive),
             asker=asker or Asker(),
-            opts=Options(reencode=args.reencode, verbose=args.verbose),
+            opts=Options(reencode=args.reencode, verbose=args.verbose, cover_art=cover_art),
         )
     except Ipadmp4Error as e:
         print(f"ipadmp4: error: {e}", file=sys.stderr)
@@ -165,7 +174,9 @@ def _run(
     for n, task in enumerate(tasks, 1):
         print(f"[{n}/{len(tasks)}] {task.src} -> {task.dst} ({describe(task.info, task.plan, opts)})")
         if dry_run:
-            print(shlex.join(build_command(task.src, task.dst, task.info, task.plan, opts, overwrite=force)))
+            cover = _cover_path(task.dst) if opts.cover_art else None
+            cmd = build_command(task.src, task.dst, task.info, task.plan, opts, cover=cover, overwrite=force)
+            print(shlex.join(cmd))
             results.append(Result(task.src, WOULD_CONVERT, task.dst))
             continue
         started = time.monotonic()
@@ -289,22 +300,40 @@ def _output_path(src: Path, output_dir: Path | None) -> Path:
     return output_dir / f"{src.stem}.mp4"
 
 
+def _cover_path(dst: Path) -> Path:
+    """Temporary cover art image, next to the output while it is written."""
+    return dst.with_name(dst.name + ".cover.png")
+
+
 def _convert(task: Task, opts: Options) -> bool:
     """Run ffmpeg into `dst.part` and rename it to `dst` only on success.
 
     A finished `dst` therefore always is a complete file: an interrupted or
-    failed run leaves at most a `.part` file, which is removed.
+    failed run leaves at most a `.part` file, which is removed. So is the
+    temporary cover art image.
     """
     dst = task.dst
     part = dst.with_name(dst.name + ".part")
     dst.parent.mkdir(parents=True, exist_ok=True)
-    cmd = build_command(task.src, part, task.info, task.plan, opts, overwrite=True)
+    cover = _cover_path(dst) if opts.cover_art else None
     try:
-        result = subprocess.run(cmd, stdin=subprocess.DEVNULL)
-    except KeyboardInterrupt:
-        part.unlink(missing_ok=True)
-        print(f"\nInterrupted; removed incomplete {part}", file=sys.stderr)
-        raise SystemExit(130) from None
+        if cover is not None:
+            try:
+                render_title_card(task.src.stem, cover)
+            except Ipadmp4Error as e:
+                # Cover art is a nicety: convert without it rather than fail.
+                print(f"ipadmp4: warning: {e}; converting without cover art", file=sys.stderr)
+                cover = None
+        cmd = build_command(task.src, part, task.info, task.plan, opts, cover=cover, overwrite=True)
+        try:
+            result = subprocess.run(cmd, stdin=subprocess.DEVNULL)
+        except KeyboardInterrupt:
+            part.unlink(missing_ok=True)
+            print(f"\nInterrupted; removed incomplete {part}", file=sys.stderr)
+            raise SystemExit(130) from None
+    finally:
+        if cover is not None:
+            cover.unlink(missing_ok=True)
     if result.returncode != 0:
         part.unlink(missing_ok=True)
         return False

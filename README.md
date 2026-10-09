@@ -38,10 +38,13 @@ Optional, in `~/.config/ipadmp4/config.toml` (or
 ```toml
 # Where MP4s go; default: next to the originals.
 output_dir = "~/Movies/iPad"
+# Embed the file name as cover art (see below); default: true.
+cover_art = true
 ```
 
 `~` and `$VARIABLES` are expanded; the folder is created when needed.
 `-o DIR` overrides the setting for one run, `--next-to-source` ignores it.
+`--cover-art` / `--no-cover-art` override `cover_art`.
 Unknown settings are reported as errors, so typos don't go unnoticed.
 
 ## Questions come first
@@ -97,7 +100,16 @@ track, or skip the file.
 | subtitles (SRT, ASS, ...) | `mov_text` text track, default on, language-tagged |
 | everything else | dropped |
 
-Chapters and metadata (title) are kept. AC-3/E-AC-3 surround is used because
+Chapters and metadata are kept, except the title: the TV app displays the
+MP4's title, so it is set to the file name without extension
+(`Heat.1995.1080p.mkv` shows as "Heat.1995.1080p").
+
+**Cover art:** the TV app on iPadOS shows only thumbnails, no names. So each
+MP4 gets the file name, in bold white on black, as embedded cover art (an
+iTunes `covr` tag), meant to become its thumbnail. The video itself is still
+copied, not re-encoded. The image is drawn with macOS's AppKit via
+`osascript`; if that fails, the file is converted without cover art and a
+warning is shown. AC-3/E-AC-3 surround is used because
 Apple's player reliably plays it with Spatial Audio; reports for
 multichannel AAC are mixed.
 

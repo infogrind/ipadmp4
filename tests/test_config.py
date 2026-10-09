@@ -45,7 +45,8 @@ def test_output_dir_with_environment_variable(tmp_path, monkeypatch):
         ('output_dir = "Movies"', "absolute path"),
         ('output_dir = ""', "non-empty string"),
         ("output_dir = 3", "non-empty string"),
-        ('outputdir = "/x"', r"unknown setting\(s\): outputdir"),
+        ('outputdir = "/x"', r"unknown setting\(s\): outputdir \(known: output_dir, cover_art\)"),
+        ('cover_art = "no"', "cover_art must be true or false"),
         ("output_dir = ", "invalid TOML"),
     ],
 )
@@ -54,3 +55,8 @@ def test_bad_config_is_a_clear_error(tmp_path, text, message):
     with pytest.raises(Ipadmp4Error, match=message) as e:
         load_config(path)
     assert str(path) in str(e.value)
+
+
+def test_cover_art_defaults_to_on_and_can_be_switched_off(tmp_path):
+    assert load_config(_write(tmp_path, 'output_dir = "/x"')).cover_art is True
+    assert load_config(_write(tmp_path, "cover_art = false")) == Config(cover_art=False)

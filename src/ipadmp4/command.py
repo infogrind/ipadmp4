@@ -36,6 +36,8 @@ TEXT_SUBTITLE_CODECS = frozenset({"subrip", "ass", "ssa", "mov_text", "webvtt", 
 class Options:
     reencode: bool = False
     verbose: bool = False
+    # Embed a title card (the file name, white on black) as cover art.
+    cover_art: bool = True
 
 
 def copies_video(video: VideoStream, plan: Plan, opts: Options) -> bool:
@@ -71,12 +73,22 @@ def describe(info: MediaInfo, plan: Plan, opts: Options) -> str:
         parts.append(f"burn in {plan.subtitle.codec} subtitles")
     else:
         parts.append(f"subtitles {plan.subtitle.codec} -> text")
+    if opts.cover_art:
+        parts.append("cover art")
     return ", ".join(parts)
 
 
 def build_command(
-    src: Path, dst: Path, info: MediaInfo, plan: Plan, opts: Options, *, overwrite: bool = False
+    src: Path,
+    dst: Path,
+    info: MediaInfo,
+    plan: Plan,
+    opts: Options,
+    *,
+    cover: Path | None = None,
+    overwrite: bool = False,
 ) -> list[str]:
+    """`cover` is an image to embed as cover art (see artwork.py)."""
     video = info.video
     if video is None:
         raise ValueError("build_command needs a file with a video stream")
@@ -96,6 +108,9 @@ def build_command(
         if sub.charset:
             cmd += ["-sub_charenc", sub.charset]
         cmd += ["-i", str(sub.path)]
+    if cover is not None:
+        cover_input = 2 if external else 1
+        cmd += ["-i", str(cover)]
 
     # Video (possibly with the subtitle drawn into it).
     if plan.burn_in:
@@ -109,12 +124,18 @@ def build_command(
     cmd += ["-map", f"0:{plan.audio.index}"]
     if sub is not None and not plan.burn_in:
         cmd += ["-map", "1:0" if external else f"0:{sub.index}"]
+    if cover is not None:
+        cmd += ["-map", f"{cover_input}:0"]
     cmd += ["-map_metadata", "0", "-map_chapters", "0"]
     # The TV app shows this title (the MP4's "©nam" tag). The movie's own
     # title tag is often missing or messy, so use the file name instead.
     cmd += ["-metadata", f"title={src.stem}"]
 
     cmd += _video_args(video, plan, opts)
+    if cover is not None:
+        # A second "video" stream flagged as attached picture becomes the
+        # MP4's cover art ("covr" tag), which the TV app can use as thumbnail.
+        cmd += ["-c:v:1", "copy", "-disposition:v:1", "attached_pic"]
     cmd += _audio_args(plan)
     if sub is not None and not plan.burn_in:
         # mov_text is the toggleable subtitle format of MP4. The language tag
@@ -129,22 +150,24 @@ def build_command(
 
 
 def _video_args(video: VideoStream, plan: Plan, opts: Options) -> list[str]:
+    """Options for the movie's video, the first output video stream (:v:0),
+    so they never apply to the cover art."""
     if copies_video(video, plan, opts):
-        args = ["-c:v", "copy"]
+        args = ["-c:v:0", "copy"]
         if video.codec == "hevc":
             # Apple players only play HEVC tagged as hvc1 (ffmpeg defaults to hev1).
-            args += ["-tag:v", "hvc1"]
+            args += ["-tag:v:0", "hvc1"]
         return args
 
     args = []
     if not plan.burn_in and (video.width % 2 or video.height % 2):
         # 4:2:0 video needs even dimensions; drop the odd row/column.
-        args += ["-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2"]
-    args += ["-c:v", "hevc_videotoolbox", "-q:v", str(VIDEOTOOLBOX_QUALITY), "-tag:v", "hvc1"]
+        args += ["-filter:v:0", "scale=trunc(iw/2)*2:trunc(ih/2)*2"]
+    args += ["-c:v:0", "hevc_videotoolbox", "-q:v:0", str(VIDEOTOOLBOX_QUALITY), "-tag:v:0", "hvc1"]
     if video.bit_depth > 8:
-        args += ["-profile:v", "main10", "-pix_fmt", "p010le"]
+        args += ["-profile:v:0", "main10", "-pix_fmt:v:0", "p010le"]
     else:
-        args += ["-profile:v", "main", "-pix_fmt", "yuv420p"]
+        args += ["-profile:v:0", "main", "-pix_fmt:v:0", "yuv420p"]
     return args
 
 
