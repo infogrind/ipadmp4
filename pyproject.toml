@@ -1,7 +1,7 @@
 [project]
 name = "ipadmp4"
 version = "0.1.0"
-description = "Convert movies (MKV) to MP4 for the iPad TV app: surround audio and toggleable subtitles"
+description = "Convert movies to MP4 for the iPad TV app, with surround audio and subtitles"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
