@@ -1,6 +1,6 @@
 [project]
 name = "ipadmp4"
-version = "0.1.0"
+version = "0.2.0"
 description = "Convert movies to MP4 for the iPad TV app, with surround audio and subtitles"
 readme = "README.md"
 license = "MIT"
