@@ -141,3 +141,11 @@ def test_describe():
     info = media([aud("eng", "dts", 6)], [sub("eng")])
     plan = Plan(audio=info.audio[0], subtitle=info.subtitles[0])
     assert describe(info, plan, Options()) == "copy video h264, encode audio dts -> ac3 5.1, subtitles subrip -> text"
+
+
+def test_title_is_the_file_name_without_extension():
+    info = media()
+    plan = Plan(audio=info.audio[0], subtitle=None)
+    cmd = build_command(Path("/m/Heat (1995)/Heat.1995.1080p.mkv"), DST, info, plan, Options())
+    assert _arg(cmd, "-metadata") == "title=Heat.1995.1080p"
+    assert cmd.index("-map_metadata") < cmd.index("-metadata")  # overrides the copied title

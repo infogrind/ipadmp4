@@ -110,6 +110,9 @@ def build_command(
     if sub is not None and not plan.burn_in:
         cmd += ["-map", "1:0" if external else f"0:{sub.index}"]
     cmd += ["-map_metadata", "0", "-map_chapters", "0"]
+    # The TV app shows this title (the MP4's "©nam" tag). The movie's own
+    # title tag is often missing or messy, so use the file name instead.
+    cmd += ["-metadata", f"title={src.stem}"]
 
     cmd += _video_args(video, plan, opts)
     cmd += _audio_args(plan)
