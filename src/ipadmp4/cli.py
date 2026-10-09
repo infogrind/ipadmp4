@@ -22,7 +22,7 @@ from pathlib import Path
 
 from .command import Options, build_command, describe
 from .config import config_path, load_config
-from .discover import Job, collect, normalize_extension
+from .discover import collect, normalize_extension
 from .errors import Ipadmp4Error
 from .plan import Asker, Plan, Session, plan_file
 from .probe import probe
@@ -183,7 +183,7 @@ def _run(
 
 
 def _plan_all(
-    jobs: list[Job], output_dir: Path | None, force: bool, session: Session, asker: Asker
+    jobs: list[Path], output_dir: Path | None, force: bool, session: Session, asker: Asker
 ) -> tuple[list[Task], list[Result]]:
     """Inspect every file and settle every question up front.
 
@@ -193,9 +193,9 @@ def _plan_all(
     results: list[Result] = []
     planned: dict[Path, Path] = {}  # output -> the source that claimed it
 
-    for n, job in enumerate(jobs, 1):
+    for n, src in enumerate(jobs, 1):
         prefix = f"[{n}/{len(jobs)}]"
-        outcome = _plan_one(job, prefix, output_dir, force, planned, session, asker, remaining=len(jobs) - n)
+        outcome = _plan_one(src, prefix, output_dir, force, planned, session, asker, remaining=len(jobs) - n)
         if isinstance(outcome, Task):
             tasks.append(outcome)
         else:
@@ -208,7 +208,7 @@ def _plan_all(
 
 
 def _plan_one(
-    job: Job,
+    src: Path,
     prefix: str,
     output_dir: Path | None,
     force: bool,
@@ -218,8 +218,7 @@ def _plan_one(
     *,
     remaining: int,
 ) -> Task | Result:
-    src = job.src
-    dst = _output_path(job, output_dir)
+    dst = _output_path(src, output_dir)
 
     key = dst.resolve()
     if key == src.resolve():
@@ -283,10 +282,11 @@ def _duration(seconds: float) -> str:
     return f"{hours}h{minutes:02d}m" if hours else f"{minutes}m{seconds:02d}s"
 
 
-def _output_path(job: Job, output_dir: Path | None) -> Path:
+def _output_path(src: Path, output_dir: Path | None) -> Path:
+    """Next to the source, or flat in `output_dir` (no subfolders, even with -r)."""
     if output_dir is None:
-        return job.src.with_suffix(".mp4")
-    return (output_dir / job.rel).with_suffix(".mp4")
+        return src.with_suffix(".mp4")
+    return output_dir / f"{src.stem}.mp4"
 
 
 def _convert(task: Task, opts: Options) -> bool:

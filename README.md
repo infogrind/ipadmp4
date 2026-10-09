@@ -20,6 +20,12 @@ ipadmp4 -n movie.mkv           # show the ffmpeg command, convert nothing
 folder (see below), or under `-o DIR`. Existing MP4s are skipped unless
 `--force` is given.
 
+With `-r`, a directory is scanned recursively for videos, e.g. a whole
+series with its season folders. An output folder is always flat: all MP4s
+land directly in it, without recreating the source's subfolders. Should two
+sources have the same file name, only the first is converted and the other is
+reported as skipped.
+
 At the end, a summary lists every file: what was converted and where the MP4
 was written (with size and time taken), and what was skipped or failed and
 why.

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterable
-from dataclasses import dataclass
 from pathlib import Path
 
 # Picked up when scanning a directory. .mp4/.m4v are deliberately absent:
@@ -17,14 +16,6 @@ VIDEO_EXTENSIONS = frozenset(
 )  # fmt: skip
 
 
-@dataclass(frozen=True)
-class Job:
-    src: Path
-    # Path relative to the argument it came from; used to mirror a scanned
-    # directory tree under --output-dir.
-    rel: Path
-
-
 def normalize_extension(ext: str) -> str:
     ext = ext.strip().lower()
     return ext if ext.startswith(".") else f".{ext}"
@@ -32,7 +23,7 @@ def normalize_extension(ext: str) -> str:
 
 def collect(
     paths: Iterable[Path], *, recursive: bool, extensions: frozenset[str] | None
-) -> tuple[list[Job], list[str]]:
+) -> tuple[list[Path], list[str]]:
     """Return the files to convert plus an error message per bad argument.
 
     - A file named explicitly is taken whatever its extension, unless
@@ -41,15 +32,15 @@ def collect(
       for all known video extensions by default. Hidden files and folders
       (including macOS "._" resource-fork files) are skipped.
     """
-    jobs: list[Job] = []
+    files: list[Path] = []
     errors: list[str] = []
     seen: set[Path] = set()
 
-    def add(src: Path, rel: Path) -> None:
+    def add(src: Path) -> None:
         key = src.resolve()
         if key not in seen:
             seen.add(key)
-            jobs.append(Job(src=src, rel=rel))
+            files.append(src)
 
     for path in paths:
         if path.is_dir():
@@ -58,14 +49,14 @@ def collect(
                 continue
             wanted = extensions if extensions is not None else VIDEO_EXTENSIONS
             for src in _scan(path, wanted):
-                add(src, src.relative_to(path))
+                add(src)
         elif path.is_file():
             if extensions is not None and path.suffix.lower() not in extensions:
                 continue
-            add(path, Path(path.name))
+            add(path)
         else:
             errors.append(f"{path}: no such file or directory")
-    return jobs, errors
+    return files, errors
 
 
 def _scan(root: Path, extensions: frozenset[str]) -> list[Path]:

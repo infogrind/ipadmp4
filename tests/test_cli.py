@@ -121,3 +121,37 @@ def test_duration(seconds, text):
 @pytest.mark.parametrize(("n", "text"), [(500, "500 bytes"), (2_000_000, "2.0 MB"), (349_295_219, "349.3 MB")])
 def test_size(n, text):
     assert cli._size(n) == text
+
+
+def test_recursive_output_is_flat_in_output_dir(tmp_path, fake_tools):
+    series = tmp_path / "Show"
+    (series / "Season 1").mkdir(parents=True)
+    (series / "Season 2").mkdir()
+    (series / "Season 1/Show.S01E01.mkv").touch()
+    (series / "Season 2/Show.S02E01.mkv").touch()
+    out = tmp_path / "ipad"
+    _config(f'output_dir = "{out}"\n')
+
+    assert cli.main(["-r", str(series)], asker=ScriptedAsker()) == 0
+
+    assert sorted(p.name for p in out.iterdir()) == ["Show.S01E01.mp4", "Show.S02E01.mp4"]
+
+
+def test_recursive_without_output_dir_writes_next_to_each_source(tmp_path, fake_tools):
+    (tmp_path / "Season 1").mkdir()
+    (tmp_path / "Season 1/e1.mkv").touch()
+    assert cli.main(["-r", str(tmp_path)], asker=ScriptedAsker()) == 0
+    assert (tmp_path / "Season 1/e1.mp4").exists()
+
+
+def test_same_name_in_two_folders_is_converted_once(tmp_path, fake_tools, capsys):
+    for show in ("A", "B"):
+        (tmp_path / show).mkdir()
+        (tmp_path / show / "S01E01.mkv").touch()
+    out = tmp_path / "ipad"
+
+    assert cli.main(["-r", "-o", str(out), str(tmp_path / "A"), str(tmp_path / "B")], asker=ScriptedAsker()) == 0
+
+    assert [p.name for p in out.iterdir()] == ["S01E01.mp4"]
+    summary = capsys.readouterr().out.split("Summary:")[1]
+    assert f"skipped       {tmp_path / 'B/S01E01.mkv'}: {out / 'S01E01.mp4'} is already produced from" in summary
